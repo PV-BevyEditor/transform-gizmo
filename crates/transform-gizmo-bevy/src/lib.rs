@@ -179,6 +179,7 @@ impl Default for GizmoHotkeys {
 }
 
 /// Posts events whenever gizmo transforms end (mouse release)
+#[allow(dead_code)]
 #[derive(Event, Debug)]
 pub struct GizmoTransform(GizmoResult);
 
@@ -191,33 +192,20 @@ pub struct GizmoTransform(GizmoResult);
 /// If target grouping is enabled in [`GizmoOptions`],
 /// a single gizmo is used for all targets. Otherwise
 /// a separate gizmo is used for each target entity.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Copy, Clone, Debug, Default)]
 pub struct GizmoTarget {
     /// Whether any part of the gizmo is currently focused.
-    pub is_focused: bool,
+    pub(crate) is_focused: bool,
 
     /// Whether the gizmo is currently being interacted with.
-    pub is_active: bool,
+    pub(crate) is_active: bool,
 
-    /// Vector containing the most recent x results
-    pub results: Vec<GizmoResult>,
-
-    pub max_result_count: Option<u16>,
-
-    pub debug_func: Option<fn(String)>,
+    /// This gets replaced with the result of the most recent
+    /// gizmo interaction that affected this entity.
+    pub(crate) latest_result: Option<GizmoResult>,
 }
 
 impl GizmoTarget {
-    /// Add a result to the result vector
-    fn add_result(&mut self, result: GizmoResult) {
-        self.results.push(result);
-        if let Some(max_result_count) = self.max_result_count {
-            if self.results.len() > max_result_count as usize {
-                self.results.remove(0);
-            }
-        }
-    }
-
     /// Whether any part of the gizmo is currently focused.
     pub fn is_focused(&self) -> bool {
         self.is_focused
@@ -227,35 +215,9 @@ impl GizmoTarget {
     pub fn is_active(&self) -> bool {
         self.is_active
     }
-
-    /// Returns the amount of results requested (all results if no amount specified)
-    pub fn results(&self, amount: Option<u16>) -> &[GizmoResult] {
-        if let Some(amount) = amount {
-            &self.results[self.results.len().saturating_sub(amount as usize)..]
-        } else {
-            &self.results
-        }
-    }
-
-    /// Set the maximum amount of results the result vector is allowed to keep
-    pub fn set_max_result_count(&mut self, amount: u16) {
-        self.max_result_count = Some(amount);
-
-        if self.results.len() > amount as usize {
-            self.results.truncate(amount as usize);
-        }
-    }
-}
-
-impl Default for GizmoTarget {
-    fn default() -> Self {
-        Self {
-            is_focused: false,
-            is_active: false,
-            results: vec![],
-            max_result_count: Some(64),
-            debug_func: None,
-        }
+    
+    pub fn latest_result(&self) -> Option<GizmoResult> {
+        self.latest_result
     }
 }
 
@@ -414,7 +376,7 @@ fn update_gizmos(
     mut last_cursor_pos: Local<Vec2>,
     mut last_scaled_cursor_pos: Local<Vec2>,
     mut gizmo_transform_events: EventWriter<GizmoTransform>,
-    mut last_active: Local<bool>,
+    mut latest_result: Local<Option<GizmoResult>>,
 ) {
 
 
@@ -510,16 +472,12 @@ fn update_gizmos(
  
 
     let mut target_entities: Vec<Entity> = vec![]; 
-     let mut target_transforms: Vec<(Transform, Transform)> = vec![];
+    let mut target_transforms: Vec<(Transform, Transform)> = vec![];
 
-   
+
 
     for (entity, mut target_transform, target_global_transform, mut gizmo_target) in &mut q_targets {
-        
-
-        
-
-          let target_global_transform = target_global_transform.compute_transform();
+        let target_global_transform = target_global_transform.compute_transform();
 
 
 
@@ -560,18 +518,19 @@ fn update_gizmos(
         );
 
         let is_focused = gizmo.is_focused();
-
         let is_active = gizmo_result.is_some();
-        gizmo_target.is_active = is_active;
-        gizmo_target.is_focused = is_focused;
 
-        if *last_active && !is_active {
-            if let Some((gizmo_result, _)) = &gizmo_result {
-                gizmo_transform_events.send(GizmoTransform(*gizmo_result));
+        if let Some((result, _)) = gizmo_result {
+            *latest_result = Some(result);
+        } else {
+            if let Some(result) = *latest_result {
+                gizmo_transform_events.send(GizmoTransform(result));
+                *latest_result = None;
             }
         }
 
-        *last_active = is_active;
+        gizmo_target.is_active = is_active;
+        gizmo_target.is_focused = is_focused;
         
         if let Some((_gizmo_result, updated_targets)) = &gizmo_result {
             let Some(result_transform) = updated_targets.first() else {
@@ -589,14 +548,7 @@ fn update_gizmos(
             
             
             target_transform.scale = DVec3::from(result_transform.scale).as_vec3();
-            
-            // gizmo_target.add_result(*gizmo_result);
-            // if let Some(console_log) = gizmo_target.debug_func {
-            //     console_log(format!("{:?}", gizmo_target.results));
-            // }
         }
-
-        // gizmo_target.latest_result = gizmo_result.map(|(result, _)| result);
     }
 
     if gizmo_options.group_targets {
@@ -619,16 +571,17 @@ fn update_gizmos(
         let is_focused = gizmo.is_focused();
         let is_active = gizmo_result.is_some();
 
-        if *last_active && !is_active {
-            if let Some((gizmo_result, _)) = &gizmo_result {
-                gizmo_transform_events.send(GizmoTransform(*gizmo_result));
-            }
-        }
-
-        *last_active = is_active;
-
         for (i, (_, mut target_transform, target_global_transform, mut gizmo_target)) in q_targets.iter_mut().enumerate() {
             let target_global_transform = target_global_transform.compute_transform();
+
+            if let Some((result, _)) = gizmo_result {
+                *latest_result = Some(result);
+            } else {
+                if let Some(result) = *latest_result {
+                    gizmo_transform_events.send(GizmoTransform(result));
+                    *latest_result = None;
+                }
+            }
 
             gizmo_target.is_active = is_active;
             gizmo_target.is_focused = is_focused;
@@ -651,14 +604,7 @@ fn update_gizmos(
                 target_transform.scale = DVec3::from(result_transform.scale).as_vec3();
  
                 target_transform.scale = DVec3::from(result_transform.scale).as_vec3();
-
-                // gizmo_target.add_result(*gizmo_result);
-                // if let Some(console_log) = gizmo_target.debug_func {
-                //     console_log(format!("{:?}", gizmo_target.results));
-                // }
             }
-
-            // gizmo_target.latest_result = gizmo_result.as_ref().map(|(result, _)| *result);
         }
     }
 
