@@ -11,7 +11,6 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::system::lifetimeless::{Read, SRes};
 use bevy_ecs::system::SystemParamItem;
-use bevy_image::BevyDefault as _;
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_reflect::{Reflect, TypePath};
 use bevy_render::extract_component::ExtractComponent;
