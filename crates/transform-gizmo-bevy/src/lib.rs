@@ -181,7 +181,7 @@ impl Default for GizmoHotkeys {
 /// Posts events whenever gizmo transforms end (mouse release)
 #[allow(dead_code)]
 #[derive(Event, Debug)]
-pub struct GizmoTransform(Entity, GizmoResult);
+pub struct GizmoTransform(pub Entity, pub GizmoResult);
 
 /// Marks an entity as a gizmo target.
 ///
