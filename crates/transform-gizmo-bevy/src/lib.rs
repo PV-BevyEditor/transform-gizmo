@@ -181,7 +181,7 @@ impl Default for GizmoHotkeys {
 /// Posts events whenever gizmo transforms end (mouse release)
 #[allow(dead_code)]
 #[derive(Event, Debug)]
-pub struct GizmoTransform(GizmoResult);
+pub struct GizmoTransform(Entity, GizmoResult);
 
 /// Marks an entity as a gizmo target.
 ///
@@ -524,7 +524,7 @@ fn update_gizmos(
             *latest_result = Some(result);
         } else {
             if let Some(result) = *latest_result {
-                gizmo_transform_events.send(GizmoTransform(result));
+                gizmo_transform_events.send(GizmoTransform(entity, result));
                 *latest_result = None;
             }
         }
@@ -571,14 +571,14 @@ fn update_gizmos(
         let is_focused = gizmo.is_focused();
         let is_active = gizmo_result.is_some();
 
-        for (i, (_, mut target_transform, target_global_transform, mut gizmo_target)) in q_targets.iter_mut().enumerate() {
+        for (i, (entity, mut target_transform, target_global_transform, mut gizmo_target)) in q_targets.iter_mut().enumerate() {
             let target_global_transform = target_global_transform.compute_transform();
 
             if let Some((result, _)) = gizmo_result {
                 *latest_result = Some(result);
             } else {
                 if let Some(result) = *latest_result {
-                    gizmo_transform_events.send(GizmoTransform(result));
+                    gizmo_transform_events.send(GizmoTransform(entity, result));
                     *latest_result = None;
                 }
             }
